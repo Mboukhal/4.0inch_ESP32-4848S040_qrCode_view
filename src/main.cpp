@@ -2,24 +2,19 @@
 #include <Arduino_GFX_Library.h>
 #include "../lib/lv_lib_qrcode/lv_qrcode.h"
 #include <lvgl.h>
+// #include <WiFi.h>
+
+// #define SSID "Poco_12"
+// #define PASSWORD "12345678"
+
+#define SERIAL_NUMBER "102030"
 
 #define GFX_BL 38
 
-// void WiFiStationConnected(WiFiEvent_t event, WiFiEventInfo_t info){
-//   Serial.println("Connected to AP successfully!");
-// }
 
-// void WiFiGotIP(WiFiEvent_t event, WiFiEventInfo_t info){
-//   Serial.println("WiFi connected");
-//   Serial.println("IP address: ");
-//   Serial.println(WiFi.localIP());
-// }
 
+// try to connect to the wifi, if not connected, try again
 // void WiFiStationDisconnected(WiFiEvent_t event, WiFiEventInfo_t info){
-//   Serial.println("Disconnected from WiFi access point");
-//   Serial.print("WiFi lost connection. Reason: ");
-//   Serial.println(info.wifi_sta_disconnected.reason);
-//   Serial.println("Trying to Reconnect");
 //   WiFi.begin(SSID, PASSWORD);
 // }
 
@@ -30,19 +25,19 @@ Arduino_ESP32RGBPanel *bus = new Arduino_ESP32RGBPanel(
   8 /* G0 */, 20 /* G1 */, 3 /* G2 */, 46 /* G3 */, 9 /* G4 */, 10 /* G5 */,
   4 /* B0 */, 5 /* B1 */, 6 /* B2 */, 7 /* B3 */, 15 /* B4 */
 );
-  Arduino_ST7701_RGBPanel *gfx = new Arduino_ST7701_RGBPanel(
-  bus, GFX_NOT_DEFINED /* RST */, 0 /* rotation */,
-  true /* IPS */, 480 /* width */, 480 /* height */,
-  st7701_type1_init_operations, sizeof(st7701_type1_init_operations),     true /* BGR */,
-  10 /* hsync_front_porch */, 8 /* hsync_pulse_width */, 50 /* hsync_back_porch */,
-  10 /* vsync_front_porch */, 8 /* vsync_pulse_width */, 20 /* vsync_back_porch */);
+Arduino_ST7701_RGBPanel *gfx = new Arduino_ST7701_RGBPanel(
+bus, GFX_NOT_DEFINED /* RST */, 0 /* rotation */,
+true /* IPS */, 480 /* width */, 480 /* height */,
+st7701_type1_init_operations, sizeof(st7701_type1_init_operations),     true /* BGR */,
+10 /* hsync_front_porch */, 8 /* hsync_pulse_width */, 50 /* hsync_back_porch */,
+10 /* vsync_front_porch */, 8 /* vsync_pulse_width */, 20 /* vsync_back_porch */);
 
 
 /* Change to your screen resolution */
 static lv_disp_draw_buf_t draw_buf;
 static lv_color_t *disp_draw_buf;
 static lv_disp_drv_t disp_drv;
-uint16_t new_qrcode = 1;
+String QR_CODE = "https://www.um6p.ma/";
 
 /* Display flushing */
 void my_disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color_p)
@@ -57,41 +52,36 @@ void my_disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color
   lv_disp_flush_ready(disp);
 }
 
-
-// #include <WiFi.h>
-
-// #define SSID "Poco_12"
-// #define PASSWORD "12345678"
-
-
-void setup()
+void wifi_init_sta(void)
 {
-  // Serial.begin(115200);
-
   // delete old config
   // WiFi.disconnect(true);
 
   // delay(1000);
 
-  // WiFi.onEvent(WiFiStationConnected, WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_CONNECTED);
-  // WiFi.onEvent(WiFiGotIP, WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_GOT_IP);
   // WiFi.onEvent(WiFiStationDisconnected, WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
 
   // WiFi.begin(SSID, PASSWORD);
 
+}
+
+void setup()
+{
+  // Serial.begin(115200);
+
+  // TODO: try to cennect to API init and send the serial number
 
   // Init Display
   gfx->begin(16000000); /* specify data bus speed */
 
-  gfx->fillScreen(BLACK);
+  // gfx->fillScreen(BLACK);
 
-#ifdef GFX_BL
+  wifi_init_sta();
+
   pinMode(GFX_BL, OUTPUT);
   digitalWrite(GFX_BL, HIGH);
-#endif
 
   lv_init();
-
 
   disp_draw_buf = (lv_color_t *)malloc(sizeof(lv_color_t) * gfx->width() * 200);
   if (!disp_draw_buf)
@@ -113,27 +103,27 @@ void setup()
     lv_disp_drv_register(&disp_drv);
 }
 
-void setNewQRCode(String &data) {
+void setNewQRCode(void) {
+
   lv_color_t bg_color = lv_palette_lighten(LV_PALETTE_LIGHT_BLUE, 5);
   lv_color_t fg_color = lv_color_hex(0xEA3B15);
 
-
   lv_obj_t * qr = lv_qrcode_create(lv_scr_act(), 480, fg_color, bg_color);
-
-  /*Set data*/
-  lv_qrcode_update(qr, data.c_str(), data.length());
+  lv_qrcode_update(qr, QR_CODE.c_str(), QR_CODE.length());
+  QR_CODE = "";
   lv_obj_center(qr);
-  new_qrcode = 0;
 }
+
 
 void loop()
 {
-  if (new_qrcode) {
-    String data = "https://www.um6p.ma/";
-    setNewQRCode(data);
 
+  // TODO: onEvent get new qr code string and set  from the server and set it to the `QR_CODE`
+
+  if (QR_CODE.length() > 0) {
+    setNewQRCode();
     // Serial.println("QR Code Created");
   }
   lv_timer_handler(); /* let the GUI do its work */
-  delay(5);
+  delay(1000);
 }
