@@ -7,16 +7,18 @@
 
 #define SSID "Poco_12"
 #define PASSWORD "12345678"
-#define SERIAL_NUMBER "102030"
-#define GFX_BL 38
 
-#define MQTT_SERVER "test.mosquitto.org"
-#define MQTT_PORT 1993
+
+const String MQTT_SERVER = "test.mosquitto.org";
+const int MQTT_PORT = 1883;
+const String MQTT_CLIENT_ID = "mqttx_11101088";
+
 
 // #define MQTT_AUTH_USER ""
 // #define MQTT_AUTH_PASSWORD ""
 
-#define TOPIC_GET_QR_CODE "um6p/qr_code_1"
+#define TOPIC_NEW_QR_CODE "um6p/new_qrcode"
+#define TOPIC_GET_QR_CODE "um6p/get_qrcode"
 
 
 Arduino_ESP32RGBPanel *bus = new Arduino_ESP32RGBPanel(
@@ -33,6 +35,8 @@ st7701_type1_init_operations, sizeof(st7701_type1_init_operations),     true /* 
 10 /* hsync_front_porch */, 8 /* hsync_pulse_width */, 50 /* hsync_back_porch */,
 10 /* vsync_front_porch */, 8 /* vsync_pulse_width */, 20 /* vsync_back_porch */);
 
+#define GFX_BL 38
+
 /* Change to your screen resolution */
 static lv_disp_draw_buf_t draw_buf;
 static lv_color_t *disp_draw_buf;
@@ -45,7 +49,8 @@ WiFiClient mqttClient;
 PubSubClient client(mqttClient);
 
 
-#define LV_COLOR_BLACK LV_COLOR_MAKE(0xff, 0xff, 0xff)
+#define LV_COLOR_WIHTE LV_COLOR_MAKE(0xff, 0xff, 0xff)
+#define LV_COLOR_BLACK LV_COLOR_MAKE(0x00, 0x00, 0x00)
 
 void display_wait(String message) {
   /*Create a style for the shadow*/
@@ -54,7 +59,7 @@ void display_wait(String message) {
 
   lv_obj_t *background = lv_obj_create(lv_scr_act());
   lv_obj_set_size(background, lv_disp_get_hor_res(NULL), lv_disp_get_ver_res(NULL));
-  lv_obj_set_style_bg_color(background, LV_COLOR_BLACK, 0);
+  lv_obj_set_style_bg_color(background, LV_COLOR_WIHTE, 0);
 
   lv_obj_t * label = lv_label_create(background);
   lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);     /*Break the long lines*/
@@ -64,18 +69,15 @@ void display_wait(String message) {
 
   lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
+
+  lv_timer_handler();
 }
-
-
-
 
 /* try to connect to the wifi, if not connected, try again */
 void WiFiStationDisconnected(WiFiEvent_t event, WiFiEventInfo_t info){
 
   isQrCode = false;
-
   WiFi.disconnect();
-
 
   String message = "#000000 <# #366e11 Future:# #000000 Is_Loading />#";
   display_wait(message);
@@ -83,10 +85,6 @@ void WiFiStationDisconnected(WiFiEvent_t event, WiFiEventInfo_t info){
   WiFi.begin(SSID, PASSWORD);
   delay(500);
 
-  // if (WiFi.status() == WL_CONNECTED) {
-  //   client.setServer(MQTT_SERVER, 1883);  
-  //   Serial.println("Server connected");
-  // }
 
 }
 
@@ -130,8 +128,57 @@ void wifi_init_sta(void) {
   
 }
 
+void callback(char *topic, uint8_t *payload, unsigned int length) {
+    Serial.print("Message arrived in topic: ");
+    Serial.println(topic);
+    Serial.print("Message:");
+    Serial.println();
+    Serial.println("-----------------------");
+    if (String(topic) == TOPIC_NEW_QR_CODE) {
+      QR_CODE = "";
+      for (int i = 0; i < length; i++) {
+        QR_CODE += (char) payload[i];
+        Serial.print((char) payload[i]);
+      }
+      setNewQRCode();
+      isQrCode = false;
+    
+    }
+}
+
+
+void reconnect() {
+  // Loop until we're reconnected
+  while (!client.connected()) {
+    if (WiFi.status() != WL_CONNECTED)
+      return;
+    Serial.println("Attempting MQTT connection...");
+    // Attempt to connect
+
+    // if (client.connect(MQTT_CLIENT_ID.c_str()), MQTT_AUTH_USER, MQTT_AUTH_PASSWORD) {
+    if (client.connect(MQTT_CLIENT_ID.c_str())) {
+      Serial.print("Connected, subscribing to: ");
+      Serial.println(TOPIC_NEW_QR_CODE);
+      // Subscribe
+      // Check if subscription was successful
+      if (client.subscribe(TOPIC_NEW_QR_CODE)) {
+        Serial.println("Subscribed successfully.");
+      } else {
+        Serial.println("Subscription failed!");
+        // Handle subscription failure (e.g., retry)
+      }
+    } else {
+      Serial.print("failed, rc=");
+      Serial.print(client.state());
+      Serial.println(" try again in 5 seconds");
+      // Wait 5 seconds before retrying
+      delay(1000);
+    }
+  }
+}
+
 void setup() {
-  // Serial.begin(115200);
+  Serial.begin(115200);
   // TODO: try to cennect to API init and send the serial number
 
   // Init Display
@@ -164,29 +211,32 @@ void setup() {
   String message = "#000000 <# #366e11 Future:# #000000 Is_Loading />#";
   display_wait(message);
 
-  lv_timer_handler();
 
-  while (WiFi.status() != WL_CONNECTED) {
+  while (WiFi.status() != WL_CONNECTED)
     delay(50);
-  // Serial.print(".");
-  }
 
-  // Serial.println("");
-  if (WiFi.status() == WL_CONNECTED) {
-    client.setServer(MQTT_SERVER, 1883);  
-    // Serial.println("Server connected");
-  }
+  client.setServer(MQTT_SERVER.c_str(), MQTT_PORT);  
+  client.setCallback(callback);
+  // client.connect(MQTT_CLIENT_ID.c_str());
+  reconnect();
 
+  client.publish(TOPIC_GET_QR_CODE, MQTT_CLIENT_ID.c_str());
+  
 }
 
-
 void loop() {
-  // TODO: onEvent get new qr code string and set  from the server and set it to the `QR_CODE`
-  if (!isQrCode && WiFi.status() == WL_CONNECTED) {
-    setNewQRCode();
-    // Serial.println("QR Code Created");
-  }
 
-  delay(5);
+  if (client.connected() && WiFi.status() == WL_CONNECTED) {
+
+      // client.publish(TOPIC_NEW_QR_CODE, "OK");
+      // Serial.println("Published");
+    // TODO: onEvent get new qr code string and set  from the server and set it to the `QR_CODE`
+    if (!isQrCode)
+      setNewQRCode();
+      // Serial.println("QR Code Created");
+    // } 
+  }
+  client.loop();
   lv_timer_handler(); /* let the GUI do its work */
+  delay(500);
 }
